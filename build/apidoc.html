@@ -1,0 +1,501 @@
+<div class="apidocDiv">
+<style>
+/*csslint
+*/
+.apidocDiv {
+    background: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+}
+.apidocDiv a[href] {
+    color: #33f;
+    font-weight: bold;
+    text-decoration: none;
+}
+.apidocDiv a[href]:hover {
+    text-decoration: underline;
+}
+.apidocCodeCommentSpan {
+    background: #bbf;
+    color: #000;
+    display: block;
+}
+.apidocCodeKeywordSpan {
+    color: #d00;
+    font-weight: bold;
+}
+.apidocCodePre {
+    background: #eef;
+    border: 1px solid;
+    color: #777;
+    padding: 5px;
+    white-space: pre-wrap;
+}
+.apidocFooterDiv {
+    margin-top: 20px;
+    text-align: center;
+}
+.apidocModuleLi {
+    margin-top: 10px;
+}
+.apidocSectionDiv {
+    border-top: 1px solid;
+    margin-top: 20px;
+}
+.apidocSignatureSpan {
+    color: #777;
+    font-weight: bold;
+}
+</style>
+<h1>api documentation for
+    <a
+
+        href="https://github.com/demmer/bluebird-retry"
+
+    >bluebird-retry (v0.10.1)</a>
+</h1>
+<h4>utility for retrying a bluebird promise until it succeeds</h4>
+<div class="apidocSectionDiv"><a
+    href="#apidoc.tableOfContents"
+    id="apidoc.tableOfContents"
+><h1>table of contents</h1></a><ol>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.bluebird-retry">module bluebird-retry</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.bluebird-retry.bluebird-retry">
+            function <span class="apidocSignatureSpan"></span>bluebird-retry
+            <span class="apidocSignatureSpan">(func, options)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.bluebird-retry.StopError">
+            function <span class="apidocSignatureSpan">bluebird-retry.</span>StopError
+            <span class="apidocSignatureSpan">(err)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.bluebird-retry.bluebird_retry">
+            function <span class="apidocSignatureSpan">bluebird-retry.</span>bluebird_retry
+            <span class="apidocSignatureSpan">(func, options)</span>
+            </a>
+
+        </li>
+
+    </ol></li>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.bluebird-retry.bluebird_retry">module bluebird-retry.bluebird_retry</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.bluebird-retry.bluebird_retry.bluebird_retry">
+            function <span class="apidocSignatureSpan">bluebird-retry.</span>bluebird_retry
+            <span class="apidocSignatureSpan">(func, options)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.bluebird-retry.bluebird_retry.StopError">
+            function <span class="apidocSignatureSpan">bluebird-retry.bluebird_retry.</span>StopError
+            <span class="apidocSignatureSpan">(err)</span>
+            </a>
+
+        </li>
+
+    </ol></li>
+
+</ol></div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.bluebird-retry" id="apidoc.module.bluebird-retry">module bluebird-retry</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.bluebird-retry.bluebird-retry" id="apidoc.element.bluebird-retry.bluebird-retry">
+        function <span class="apidocSignatureSpan"></span>bluebird-retry
+        <span class="apidocSignatureSpan">(func, options)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function retry(func, options) {
+    options = options || {};
+
+    var interval = typeof options.interval === &#x27;number&#x27; ? options.interval : 1000;
+
+    var max_tries, giveup_time;
+    if (typeof(options.max_tries) !== &#x27;undefined&#x27;) {
+        max_tries = options.max_tries;
+    }
+
+    if (options.timeout) {
+        giveup_time = new Date().getTime() + options.timeout;
+    }
+
+    if (!max_tries &#x26;&#x26; !giveup_time) {
+        max_tries = 5;
+    }
+
+    var tries = 0;
+    var start = new Date().getTime();
+
+    // If the user didn&#x27;t supply a predicate function then add one that
+    // always succeeds.
+    //
+    // This is used in bluebird&#x27;s filtered catch to flag the error types
+    // that should retry.
+    var predicate = options.predicate || function(err) { return true; }
+    var stopped = false;
+
+    function try_once() {
+        var tryStart = new Date().getTime();
+        return Promise.attempt(function() {
+                return func.apply(options.context, options.args);
+            })
+            .caught(StopError, function(err) {
+                stopped = true;
+                if (err.err instanceof Error) {
+                    return Promise.reject(err.err);
+                } else {
+                    return Promise.reject(err);
+                }
+            })
+            .caught(predicate, function(err) {
+                if (stopped) {
+                    return Promise.reject(err);
+                }
+                ++tries;
+                if (tries &#x3e; 1) {
+                    interval = backoff(interval, options);
+                }
+                var now = new Date().getTime();
+
+                if ((max_tries &#x26;&#x26; (tries === max_tries) ||
+                    (giveup_time &#x26;&#x26; (now + interval &#x3e;= giveup_time)))) {
+
+                    if (! (err instanceof Error)) {
+                        var failure = err;
+
+                        if (failure) {
+                          if (typeof failure !== &#x27;string&#x27;) {
+                            failure = JSON.stringify(failure);
+                          }
+                        }
+
+                        err = new Error(&#x27;rejected with non-error: &#x27; + failure);
+                        err.failure = failure;
+                    } else if (options.throw_original) {
+                      return Promise.reject(err);
+                    }
+
+                    var timeout = new Error(&#x27;operation timed out after &#x27; + (now - start) + &#x27; ms, &#x27; + tries + &#x27; tries with error: &#x27; +
+err.message);
+                    timeout.failure = err;
+                    timeout.code = &#x27;ETIMEDOUT&#x27;;
+                    return Promise.reject(timeout);
+                } else {
+                    var delay = interval - (now - tryStart);
+                    if (delay &#x3c;= 0) {
+                        return try_once();
+                    } else {
+                        return Promise.delay(delay).then(try_once);
+                    }
+                }
+            });
+    }
+    return try_once();
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.bluebird-retry.StopError" id="apidoc.element.bluebird-retry.StopError">
+        function <span class="apidocSignatureSpan">bluebird-retry.</span>StopError
+        <span class="apidocSignatureSpan">(err)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function StopError(err) {
+    this.name = &#x27;StopError&#x27;;
+    if (err instanceof Error) {
+        this.err = err
+    } else {
+        this.message = err || &#x27;cancelled&#x27;
+    }
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+var retry = require(&#x27;bluebird-retry&#x27;);
+var i = 0;
+var err;
+var swing = function() {
+i++;
+console.log(&#x27;strike &#x27; + i);
+if (i == 3) {
+    throw new retry.<span class="apidocCodeKeywordSpan">StopError</span>(&#x27;yer out&#x27;);
+}
+throw new Error(&#x27;still up at bat&#x27;);
+};
+
+retry(swing, {timeout: 10000})
+.caught(function(e) {
+console.log(e.message)
+...</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.bluebird-retry.bluebird_retry" id="apidoc.element.bluebird-retry.bluebird_retry">
+        function <span class="apidocSignatureSpan">bluebird-retry.</span>bluebird_retry
+        <span class="apidocSignatureSpan">(func, options)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function retry(func, options) {
+    options = options || {};
+
+    var interval = typeof options.interval === &#x27;number&#x27; ? options.interval : 1000;
+
+    var max_tries, giveup_time;
+    if (typeof(options.max_tries) !== &#x27;undefined&#x27;) {
+        max_tries = options.max_tries;
+    }
+
+    if (options.timeout) {
+        giveup_time = new Date().getTime() + options.timeout;
+    }
+
+    if (!max_tries &#x26;&#x26; !giveup_time) {
+        max_tries = 5;
+    }
+
+    var tries = 0;
+    var start = new Date().getTime();
+
+    // If the user didn&#x27;t supply a predicate function then add one that
+    // always succeeds.
+    //
+    // This is used in bluebird&#x27;s filtered catch to flag the error types
+    // that should retry.
+    var predicate = options.predicate || function(err) { return true; }
+    var stopped = false;
+
+    function try_once() {
+        var tryStart = new Date().getTime();
+        return Promise.attempt(function() {
+                return func.apply(options.context, options.args);
+            })
+            .caught(StopError, function(err) {
+                stopped = true;
+                if (err.err instanceof Error) {
+                    return Promise.reject(err.err);
+                } else {
+                    return Promise.reject(err);
+                }
+            })
+            .caught(predicate, function(err) {
+                if (stopped) {
+                    return Promise.reject(err);
+                }
+                ++tries;
+                if (tries &#x3e; 1) {
+                    interval = backoff(interval, options);
+                }
+                var now = new Date().getTime();
+
+                if ((max_tries &#x26;&#x26; (tries === max_tries) ||
+                    (giveup_time &#x26;&#x26; (now + interval &#x3e;= giveup_time)))) {
+
+                    if (! (err instanceof Error)) {
+                        var failure = err;
+
+                        if (failure) {
+                          if (typeof failure !== &#x27;string&#x27;) {
+                            failure = JSON.stringify(failure);
+                          }
+                        }
+
+                        err = new Error(&#x27;rejected with non-error: &#x27; + failure);
+                        err.failure = failure;
+                    } else if (options.throw_original) {
+                      return Promise.reject(err);
+                    }
+
+                    var timeout = new Error(&#x27;operation timed out after &#x27; + (now - start) + &#x27; ms, &#x27; + tries + &#x27; tries with error: &#x27; +
+err.message);
+                    timeout.failure = err;
+                    timeout.code = &#x27;ETIMEDOUT&#x27;;
+                    return Promise.reject(timeout);
+                } else {
+                    var delay = interval - (now - tryStart);
+                    if (delay &#x3c;= 0) {
+                        return try_once();
+                    } else {
+                        return Promise.delay(delay).then(try_once);
+                    }
+                }
+            });
+    }
+    return try_once();
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+</div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.bluebird-retry.bluebird_retry" id="apidoc.module.bluebird-retry.bluebird_retry">module bluebird-retry.bluebird_retry</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.bluebird-retry.bluebird_retry.bluebird_retry" id="apidoc.element.bluebird-retry.bluebird_retry.bluebird_retry">
+        function <span class="apidocSignatureSpan">bluebird-retry.</span>bluebird_retry
+        <span class="apidocSignatureSpan">(func, options)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function retry(func, options) {
+    options = options || {};
+
+    var interval = typeof options.interval === &#x27;number&#x27; ? options.interval : 1000;
+
+    var max_tries, giveup_time;
+    if (typeof(options.max_tries) !== &#x27;undefined&#x27;) {
+        max_tries = options.max_tries;
+    }
+
+    if (options.timeout) {
+        giveup_time = new Date().getTime() + options.timeout;
+    }
+
+    if (!max_tries &#x26;&#x26; !giveup_time) {
+        max_tries = 5;
+    }
+
+    var tries = 0;
+    var start = new Date().getTime();
+
+    // If the user didn&#x27;t supply a predicate function then add one that
+    // always succeeds.
+    //
+    // This is used in bluebird&#x27;s filtered catch to flag the error types
+    // that should retry.
+    var predicate = options.predicate || function(err) { return true; }
+    var stopped = false;
+
+    function try_once() {
+        var tryStart = new Date().getTime();
+        return Promise.attempt(function() {
+                return func.apply(options.context, options.args);
+            })
+            .caught(StopError, function(err) {
+                stopped = true;
+                if (err.err instanceof Error) {
+                    return Promise.reject(err.err);
+                } else {
+                    return Promise.reject(err);
+                }
+            })
+            .caught(predicate, function(err) {
+                if (stopped) {
+                    return Promise.reject(err);
+                }
+                ++tries;
+                if (tries &#x3e; 1) {
+                    interval = backoff(interval, options);
+                }
+                var now = new Date().getTime();
+
+                if ((max_tries &#x26;&#x26; (tries === max_tries) ||
+                    (giveup_time &#x26;&#x26; (now + interval &#x3e;= giveup_time)))) {
+
+                    if (! (err instanceof Error)) {
+                        var failure = err;
+
+                        if (failure) {
+                          if (typeof failure !== &#x27;string&#x27;) {
+                            failure = JSON.stringify(failure);
+                          }
+                        }
+
+                        err = new Error(&#x27;rejected with non-error: &#x27; + failure);
+                        err.failure = failure;
+                    } else if (options.throw_original) {
+                      return Promise.reject(err);
+                    }
+
+                    var timeout = new Error(&#x27;operation timed out after &#x27; + (now - start) + &#x27; ms, &#x27; + tries + &#x27; tries with error: &#x27; +
+err.message);
+                    timeout.failure = err;
+                    timeout.code = &#x27;ETIMEDOUT&#x27;;
+                    return Promise.reject(timeout);
+                } else {
+                    var delay = interval - (now - tryStart);
+                    if (delay &#x3c;= 0) {
+                        return try_once();
+                    } else {
+                        return Promise.delay(delay).then(try_once);
+                    }
+                }
+            });
+    }
+    return try_once();
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.bluebird-retry.bluebird_retry.StopError" id="apidoc.element.bluebird-retry.bluebird_retry.StopError">
+        function <span class="apidocSignatureSpan">bluebird-retry.bluebird_retry.</span>StopError
+        <span class="apidocSignatureSpan">(err)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function StopError(err) {
+    this.name = &#x27;StopError&#x27;;
+    if (err instanceof Error) {
+        this.err = err
+    } else {
+        this.message = err || &#x27;cancelled&#x27;
+    }
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+var retry = require(&#x27;bluebird-retry&#x27;);
+var i = 0;
+var err;
+var swing = function() {
+i++;
+console.log(&#x27;strike &#x27; + i);
+if (i == 3) {
+    throw new retry.<span class="apidocCodeKeywordSpan">StopError</span>(&#x27;yer out&#x27;);
+}
+throw new Error(&#x27;still up at bat&#x27;);
+};
+
+retry(swing, {timeout: 10000})
+.caught(function(e) {
+console.log(e.message)
+...</pre></li>
+    </ul>
+
+
+</div>
+
+<div class="apidocFooterDiv">
+    [ this document was created with
+    <a href="https://github.com/kaizhu256/node-utility2" target="_blank">utility2</a>
+    ]
+</div>
+</div>
